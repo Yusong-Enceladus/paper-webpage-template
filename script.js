@@ -210,6 +210,7 @@ class Viewer4D {
             this.parseSplatData(buffer);
             this.createPointCloudFromSplat();
             this.hideMessage();
+            this.abortController = null; // Cleanup
             
         } catch (error) {
             // Ignore abort errors (user switched scenes)
@@ -252,7 +253,7 @@ class Viewer4D {
         
         for (let i = 0; i < pointCount; i++) {
             positions[i * 3] = this.float16ToFloat32(view.getUint16(offset, true));
-            positions[i * 3 + 1] = this.float16ToFloat32(view.getUint16(offset + 2, true));
+            positions[i * 3 + 1] = -this.float16ToFloat32(view.getUint16(offset + 2, true)); // Flip Y
             positions[i * 3 + 2] = this.float16ToFloat32(view.getUint16(offset + 4, true));
             offset += 6;
             
@@ -286,9 +287,9 @@ class Viewer4D {
             const z = this.float16ToFloat32(view.getUint16(offset + 4, true));
             offset += 6;
             
-            // Positions are already normalized in [-10, 10] range
+            // Positions are already normalized in [-10, 10] range, flip Y for correct orientation
             positions[i * 3] = x;
-            positions[i * 3 + 1] = y;
+            positions[i * 3 + 1] = -y; // Flip Y
             positions[i * 3 + 2] = z;
             
             // Read colors (RGBA, but we only use RGB)
@@ -324,14 +325,9 @@ class Viewer4D {
             this.pointCloud.material.dispose();
         }
         
-        // Flip Y axis to correct orientation
-        const positions = this.splatData.positions.slice();
-        for (let i = 0; i < positions.length; i += 3) {
-            positions[i + 1] = -positions[i + 1]; // Flip Y
-        }
-        
+        // Y is already flipped during parsing
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('position', new THREE.BufferAttribute(this.splatData.positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(this.splatData.colors, 3));
         
         // Center the point cloud

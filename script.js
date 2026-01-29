@@ -153,33 +153,13 @@ class Viewer4D {
         const view = new DataView(buffer);
         let offset = 0;
         
-        // Read header
-        const magic = String.fromCharCode(
-            view.getUint8(0), view.getUint8(1), 
-            view.getUint8(2), view.getUint8(3)
-        );
+        // Read point count (first 4 bytes as uint32 little-endian)
+        const pointCount = view.getUint32(offset, true);
         offset = 4;
-        
-        if (magic !== 'SPLT') {
-            throw new Error('Invalid splat file format');
-        }
-        
-        const version = view.getUint32(offset, true); offset += 4;
-        const pointCount = view.getUint32(offset, true); offset += 4;
-        
-        // Read center and scale
-        this.splatCenter = [
-            view.getFloat32(offset, true),
-            view.getFloat32(offset + 4, true),
-            view.getFloat32(offset + 8, true)
-        ];
-        offset += 12;
-        this.splatScale = view.getFloat32(offset, true);
-        offset += 4;
         
         console.log(`Loading ${pointCount.toLocaleString()} points`);
         
-        // Read point data
+        // Read point data: [x_f16, y_f16, z_f16, r_u8, g_u8, b_u8, a_u8] = 10 bytes per point
         const positions = new Float32Array(pointCount * 3);
         const colors = new Float32Array(pointCount * 3);
         
@@ -190,10 +170,10 @@ class Viewer4D {
             const z = this.float16ToFloat32(view.getUint16(offset + 4, true));
             offset += 6;
             
-            // Reconstruct original positions
-            positions[i * 3] = (x / 30000) * this.splatScale + this.splatCenter[0];
-            positions[i * 3 + 1] = (y / 30000) * this.splatScale + this.splatCenter[1];
-            positions[i * 3 + 2] = (z / 30000) * this.splatScale + this.splatCenter[2];
+            // Positions are already normalized in [-10, 10] range
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
             
             // Read colors (RGBA, but we only use RGB)
             colors[i * 3] = view.getUint8(offset) / 255;
@@ -373,16 +353,13 @@ class Viewer4D {
     loadScene(sceneName) {
         const sceneFiles = {
             'scene1': 'assets/scene1.splat',
-            'scene2': 'assets/scene1.splat', // Same file for demo
-            'scene3': 'assets/scene1.splat',
-            'scene4': 'assets/scene1.splat',
-            'scene5': 'assets/scene1.splat',
-            'scene6': 'assets/scene1.splat',
-            'scene7': 'assets/scene1.splat',
-            'scene8': 'assets/scene1.splat'
+            'scene2': 'assets/scene2.splat',
+            'scene3': 'assets/scene3.splat',
+            'scene4': 'assets/scene4.splat',
+            'scene5': 'assets/scene5.splat'
         };
         
-        const file = sceneFiles[sceneName] || 'assets/scene1.splat';
+        const file = sceneFiles[sceneName] || `assets/${sceneName}.splat`;
         this.loadSplatFile(file);
         
         this.currentFrame = 0;

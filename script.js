@@ -114,6 +114,7 @@ class Viewer4D {
         this.splatScale = 1;
         this.currentScene = 'scene1';
         this.abortController = null; // For cancelling pending requests
+        this.sceneCache = {}; // Cache loaded scenes
         
         // UI elements
         this.playPauseBtn = document.getElementById('play-pause');
@@ -165,8 +166,16 @@ class Viewer4D {
         }
         this.abortController = new AbortController();
         
-        this.showMessage('Loading 0%');
         this.currentScene = sceneName;
+        
+        // Check cache first
+        if (this.sceneCache[sceneName]) {
+            this.splatData = this.sceneCache[sceneName];
+            this.createPointCloudFromSplat();
+            return;
+        }
+        
+        this.showMessage('Loading 0%');
         
         try {
             const response = await fetch(url, { signal: this.abortController.signal });
@@ -190,9 +199,9 @@ class Viewer4D {
                 chunks.push(value);
                 received += value.length;
                 
-                // Update progress
+                // Update progress (cap at 100%)
                 if (total > 0) {
-                    const percent = Math.round((received / total) * 100);
+                    const percent = Math.min(100, Math.round((received / total) * 100));
                     this.showMessage(`Loading ${percent}%`);
                 }
                 
@@ -209,6 +218,14 @@ class Viewer4D {
             const buffer = this.concatArrayBuffers(chunks);
             this.parseSplatData(buffer);
             this.createPointCloudFromSplat();
+            
+            // Cache the loaded data
+            this.sceneCache[sceneName] = {
+                positions: this.splatData.positions.slice(), // Clone to avoid mutation
+                colors: this.splatData.colors.slice(),
+                count: this.splatData.count
+            };
+            
             this.hideMessage();
             this.abortController = null; // Cleanup
             

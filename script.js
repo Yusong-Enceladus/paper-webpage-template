@@ -168,10 +168,10 @@ class Viewer4D {
         
         this.currentScene = sceneName;
         
-        // Check cache first
+        // Check cache first - instant display without camera reset
         if (this.sceneCache[sceneName]) {
             this.splatData = this.sceneCache[sceneName];
-            this.createPointCloudFromSplat();
+            this.createPointCloudFromSplat(false); // Don't reset camera
             return;
         }
         
@@ -189,9 +189,8 @@ class Viewer4D {
             
             const chunks = [];
             let received = 0;
-            let lastUpdate = 0;
             
-            // Stream and progressively display
+            // Stream download with progress display only (no intermediate renders)
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -204,33 +203,24 @@ class Viewer4D {
                     const percent = Math.min(100, Math.round((received / total) * 100));
                     this.showMessage(`Loading ${percent}%`);
                 }
-                
-                // Update display every 10% or 2MB
-                if (received - lastUpdate > Math.max(total * 0.1, 2000000)) {
-                    lastUpdate = received;
-                    const partialBuffer = this.concatArrayBuffers(chunks);
-                    this.parseSplatDataPartial(partialBuffer);
-                    this.createPointCloudFromSplat();
-                }
             }
             
-            // Final full render
+            // Parse and render once at the end
             const buffer = this.concatArrayBuffers(chunks);
             this.parseSplatData(buffer);
-            this.createPointCloudFromSplat();
+            this.createPointCloudFromSplat(true); // Reset camera for new scene
             
-            // Cache the loaded data
+            // Cache the loaded data (clone to preserve original)
             this.sceneCache[sceneName] = {
-                positions: this.splatData.positions.slice(), // Clone to avoid mutation
+                positions: this.splatData.positions.slice(),
                 colors: this.splatData.colors.slice(),
                 count: this.splatData.count
             };
             
             this.hideMessage();
-            this.abortController = null; // Cleanup
+            this.abortController = null;
             
         } catch (error) {
-            // Ignore abort errors (user switched scenes)
             if (error.name === 'AbortError') {
                 return;
             }
@@ -249,38 +239,6 @@ class Viewer4D {
             offset += arr.length;
         }
         return result.buffer;
-    }
-    
-    parseSplatDataPartial(buffer) {
-        // Parse as much as we can from partial data
-        const view = new DataView(buffer);
-        if (buffer.byteLength < 4) return;
-        
-        const totalPoints = view.getUint32(0, true);
-        const bytesPerPoint = 10; // 6 bytes position + 4 bytes color
-        const availableBytes = buffer.byteLength - 4;
-        const availablePoints = Math.floor(availableBytes / bytesPerPoint);
-        const pointCount = Math.min(totalPoints, availablePoints);
-        
-        if (pointCount < 1000) return; // Wait for more data
-        
-        let offset = 4;
-        const positions = new Float32Array(pointCount * 3);
-        const colors = new Float32Array(pointCount * 3);
-        
-        for (let i = 0; i < pointCount; i++) {
-            positions[i * 3] = this.float16ToFloat32(view.getUint16(offset, true));
-            positions[i * 3 + 1] = -this.float16ToFloat32(view.getUint16(offset + 2, true)); // Flip Y
-            positions[i * 3 + 2] = this.float16ToFloat32(view.getUint16(offset + 4, true));
-            offset += 6;
-            
-            colors[i * 3] = view.getUint8(offset) / 255;
-            colors[i * 3 + 1] = view.getUint8(offset + 1) / 255;
-            colors[i * 3 + 2] = view.getUint8(offset + 2) / 255;
-            offset += 4;
-        }
-        
-        this.splatData = { positions, colors, count: pointCount };
     }
     
     parseSplatData(buffer) {
@@ -333,7 +291,7 @@ class Viewer4D {
         return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / Math.pow(2, 10));
     }
     
-    createPointCloudFromSplat() {
+    createPointCloudFromSplat(resetCamera = true) {
         if (!this.splatData) return;
         
         if (this.pointCloud) {
@@ -362,27 +320,29 @@ class Viewer4D {
         this.pointCloud = new THREE.Points(geometry, material);
         this.scene.add(this.pointCloud);
         
-        // Adjust camera to fit based on scene
-        geometry.computeBoundingSphere();
-        const radius = geometry.boundingSphere.radius;
-        
-        // Scene-specific camera positions
-        const cameraSettings = {
-            'scene1': { x: -0.4, y: 0.5, z: -1.7 },   // Default front view
-            'scene2': { x: -0.4, y: 0.5, z: -1.7 },   // Default front view
-            'scene3': { x: -0.4, y: 0.15, z: -1.7 },  // Lower Y for less top-down
-            'scene4': { x: -0.4, y: 0.15, z: -1.7 },  // Lower Y for less top-down
-            'scene5': { x: -0.3, y: 0.3, z: -1.2 }    // Closer zoom
-        };
-        
-        const settings = cameraSettings[this.currentScene] || cameraSettings['scene1'];
-        this.camera.position.set(
-            radius * settings.x,
-            radius * settings.y,
-            radius * settings.z
-        );
-        this.controls.target.set(0, 0, 0);
-        this.controls.update();
+        // Only reset camera for new scene loads
+        if (resetCamera) {
+            geometry.computeBoundingSphere();
+            const radius = geometry.boundingSphere.radius;
+            
+            // Scene-specific camera positions
+            const cameraSettings = {
+                'scene1': { x: -0.4, y: 0.5, z: -1.7 },
+                'scene2': { x: -0.4, y: 0.5, z: -1.7 },
+                'scene3': { x: -0.4, y: 0.15, z: -1.7 },
+                'scene4': { x: -0.4, y: 0.15, z: -1.7 },
+                'scene5': { x: -0.3, y: 0.3, z: -1.2 }
+            };
+            
+            const settings = cameraSettings[this.currentScene] || cameraSettings['scene1'];
+            this.camera.position.set(
+                radius * settings.x,
+                radius * settings.y,
+                radius * settings.z
+            );
+            this.controls.target.set(0, 0, 0);
+            this.controls.update();
+        }
     }
     
     createDemoScene() {

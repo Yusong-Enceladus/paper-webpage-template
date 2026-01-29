@@ -115,6 +115,8 @@ class Viewer4D {
         this.currentScene = 'scene1';
         this.abortController = null; // For cancelling pending requests
         this.sceneCache = {}; // Cache loaded scenes
+        this.userInteractedDuringLoad = false; // Track user interaction
+        this.isLoading = false;
         
         // UI elements
         this.playPauseBtn = document.getElementById('play-pause');
@@ -127,7 +129,9 @@ class Viewer4D {
         this.animate();
         
         this.controls.addEventListener('start', () => {
-            this.hideMessage();
+            if (this.isLoading) {
+                this.userInteractedDuringLoad = true;
+            }
         });
     }
     
@@ -175,6 +179,9 @@ class Viewer4D {
             return;
         }
         
+        // Start loading
+        this.isLoading = true;
+        this.userInteractedDuringLoad = false;
         this.showMessage('Loading 0%');
         
         try {
@@ -190,7 +197,7 @@ class Viewer4D {
             const chunks = [];
             let received = 0;
             
-            // Stream download with progress display only (no intermediate renders)
+            // Stream download with progress display only
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -208,7 +215,10 @@ class Viewer4D {
             // Parse and render once at the end
             const buffer = this.concatArrayBuffers(chunks);
             this.parseSplatData(buffer);
-            this.createPointCloudFromSplat(true); // Reset camera for new scene
+            
+            // Only reset camera if user didn't interact during loading
+            const shouldResetCamera = !this.userInteractedDuringLoad;
+            this.createPointCloudFromSplat(shouldResetCamera);
             
             // Cache the loaded data (clone to preserve original)
             this.sceneCache[sceneName] = {
@@ -218,9 +228,11 @@ class Viewer4D {
             };
             
             this.hideMessage();
+            this.isLoading = false;
             this.abortController = null;
             
         } catch (error) {
+            this.isLoading = false;
             if (error.name === 'AbortError') {
                 return;
             }

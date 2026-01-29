@@ -158,10 +158,23 @@ class Viewer4D {
     }
     
     async loadSplatFile(url, sceneName = 'scene1') {
-        this.showMessage('Loading point cloud...');
+        this.showMessage('Loading...');
         this.currentScene = sceneName;
         
+        // Progressive loading: load low-res first, then full-res
+        const lowResUrl = url.replace('.splat', '_low.splat');
+        
         try {
+            // First load low-res version for quick display
+            const lowResResponse = await fetch(lowResUrl);
+            if (lowResResponse.ok) {
+                const lowBuffer = await lowResResponse.arrayBuffer();
+                this.parseSplatData(lowBuffer);
+                this.createPointCloudFromSplat();
+                this.showMessage('Loading HD...');
+            }
+            
+            // Then load full-res version
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error('Failed to load splat file');
@@ -174,7 +187,6 @@ class Viewer4D {
             
         } catch (error) {
             console.error('Error loading splat:', error);
-            // Fallback to demo scene
             this.createDemoScene();
             this.hideMessage();
         }

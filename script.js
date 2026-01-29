@@ -113,6 +113,7 @@ class Viewer4D {
         this.splatCenter = [0, 0, 0];
         this.splatScale = 1;
         this.currentScene = 'scene1';
+        this.abortController = null; // For cancelling pending requests
         
         // UI elements
         this.playPauseBtn = document.getElementById('play-pause');
@@ -158,11 +159,17 @@ class Viewer4D {
     }
     
     async loadSplatFile(url, sceneName = 'scene1') {
+        // Cancel any pending request
+        if (this.abortController) {
+            this.abortController.abort();
+        }
+        this.abortController = new AbortController();
+        
         this.showMessage('Loading 0%');
         this.currentScene = sceneName;
         
         try {
-            const response = await fetch(url);
+            const response = await fetch(url, { signal: this.abortController.signal });
             if (!response.ok) {
                 throw new Error('Failed to load splat file');
             }
@@ -205,6 +212,10 @@ class Viewer4D {
             this.hideMessage();
             
         } catch (error) {
+            // Ignore abort errors (user switched scenes)
+            if (error.name === 'AbortError') {
+                return;
+            }
             console.error('Error loading splat:', error);
             this.createDemoScene();
             this.hideMessage();

@@ -141,10 +141,11 @@ class Viewer4D {
         
         this.renderer = new THREE.WebGLRenderer({ 
             canvas: this.canvas,
-            antialias: true 
+            antialias: false,  // Disable for better performance
+            powerPreference: 'high-performance'
         });
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setPixelRatio(1);  // Lower pixel ratio for performance
         
         this.controls = new THREE.OrbitControls(this.camera, this.canvas);
         this.controls.enableDamping = true;

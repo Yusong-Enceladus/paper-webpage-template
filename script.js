@@ -84,6 +84,7 @@ class Viewer4D {
         this.splatData = null;
         this.splatCenter = [0, 0, 0];
         this.splatScale = 1;
+        this.currentScene = 'scene1';
         
         // UI elements
         this.playPauseBtn = document.getElementById('play-pause');
@@ -91,7 +92,7 @@ class Viewer4D {
         this.frameCounter = document.getElementById('frame-counter');
         
         this.init();
-        this.loadSplatFile('assets/scene1.splat');
+        this.loadSplatFile('assets/scene1.splat', 'scene1');
         this.setupControls();
         this.animate();
         
@@ -127,8 +128,9 @@ class Viewer4D {
         window.addEventListener('resize', () => this.onResize());
     }
     
-    async loadSplatFile(url) {
+    async loadSplatFile(url, sceneName = 'scene1') {
         this.showMessage('Loading point cloud...');
+        this.currentScene = sceneName;
         
         try {
             const response = await fetch(url);
@@ -233,10 +235,25 @@ class Viewer4D {
         this.pointCloud = new THREE.Points(geometry, material);
         this.scene.add(this.pointCloud);
         
-        // Adjust camera to fit - front view with slight angle
+        // Adjust camera to fit based on scene
         geometry.computeBoundingSphere();
         const radius = geometry.boundingSphere.radius;
-        this.camera.position.set(-radius * 0.4, radius * 0.5, -radius * 1.7);
+        
+        // Scene-specific camera positions
+        const cameraSettings = {
+            'scene1': { x: -0.4, y: 0.5, z: -1.7 },   // Default front view
+            'scene2': { x: -0.4, y: 0.5, z: -1.7 },   // Default front view
+            'scene3': { x: -0.4, y: 0.15, z: -1.7 },  // Lower Y for less top-down
+            'scene4': { x: -0.4, y: 0.15, z: -1.7 },  // Lower Y for less top-down
+            'scene5': { x: -0.3, y: 0.3, z: -1.2 }    // Closer zoom
+        };
+        
+        const settings = cameraSettings[this.currentScene] || cameraSettings['scene1'];
+        this.camera.position.set(
+            radius * settings.x,
+            radius * settings.y,
+            radius * settings.z
+        );
         this.controls.target.set(0, 0, 0);
         this.controls.update();
     }
@@ -360,7 +377,7 @@ class Viewer4D {
         };
         
         const file = sceneFiles[sceneName] || `assets/${sceneName}.splat`;
-        this.loadSplatFile(file);
+        this.loadSplatFile(file, sceneName);
         
         this.currentFrame = 0;
         this.rotationAngle = 0;
